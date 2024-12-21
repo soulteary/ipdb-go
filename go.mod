@@ -1,3 +1,3 @@
-module github.com/ipipdotnet/ipdb-go
+module github.com/soulteary/ipdb-go
 
-go 1.14
+go 1.23.3
