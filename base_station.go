@@ -7,12 +7,10 @@ import (
 )
 
 type BaseStationInfo struct {
-	CountryName string `json:"country_name"`
 	RegionName  string `json:"region_name"`
 	CityName    string `json:"city_name"`
 	OwnerDomain string `json:"owner_domain"`
 	IspDomain   string `json:"isp_domain"`
-	BaseStation string `json:"base_station"`
 }
 
 type BaseStation struct {
@@ -20,7 +18,6 @@ type BaseStation struct {
 }
 
 func NewBaseStation(name string) (*BaseStation, error) {
-
 	r, e := newReader(name, &BaseStationInfo{})
 	if e != nil {
 		return nil, e
@@ -32,7 +29,6 @@ func NewBaseStation(name string) (*BaseStation, error) {
 }
 
 func (db *BaseStation) Reload(name string) error {
-
 	_, err := os.Stat(name)
 	if err != nil {
 		return err

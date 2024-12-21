@@ -7,14 +7,10 @@ import (
 )
 
 type DistrictInfo struct {
-	CountryName    string `json:"country_name"`
 	RegionName     string `json:"region_name"`
 	CityName       string `json:"city_name"`
 	DistrictName   string `json:"district_name"`
-	ChinaAdminCode string `json:"china_admin_code"`
 	CoveringRadius string `json:"covering_radius"`
-	Latitude       string `json:"latitude"`
-	Longitude      string `json:"longitude"`
 }
 
 type District struct {
