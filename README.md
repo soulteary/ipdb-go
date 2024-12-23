@@ -1,7 +1,5 @@
 # IPDB (Go version)
 
-[![TravisCI Build Status](https://travis-ci.org/ipipdotnet/ipdb-go.svg?branch=master)](https://travis-ci.org/ipipdotnet/ipdb-go)
-[![Coverage Status](https://coveralls.io/repos/github/ipipdotnet/ipdb-go/badge.svg?branch=master)](https://coveralls.io/github/ipipdotnet/ipdb-go?branch=master)
 [![IPDB Database API Document](https://godoc.org/github.com/ipipdotnet/ipdb-go?status.svg)](https://godoc.org/github.com/ipipdotnet/ipdb-go)
 
 IPIP.net 官方支持的 IP 数据库 ipdb 格式解析库
