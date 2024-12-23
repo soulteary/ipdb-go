@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ipipdotnet/ipdb-go"
+	"github.com/soulteary/ipdb-go"
 	"github.com/stretchr/testify/assert"
 )
 

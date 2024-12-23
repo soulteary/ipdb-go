@@ -1,13 +1,13 @@
 # IPDB (Go version)
 
-[![IPDB Database API Document](https://godoc.org/github.com/ipipdotnet/ipdb-go?status.svg)](https://godoc.org/github.com/ipipdotnet/ipdb-go)
+[![IPDB Database API Document](https://godoc.org/github.com/soulteary/ipdb-go?status.svg)](https://godoc.org/github.com/soulteary/ipdb-go)
 
 IPIP.net 官方支持的 IP 数据库 ipdb 格式解析库
 
 ## 安装方法
 
 ```bash
-go get github.com/ipipdotnet/ipdb-go
+go get github.com/soulteary/ipdb-go
 ```
 
 ## 代码示例
@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ipipdotnet/ipdb-go"
+	"github.com/soulteary/ipdb-go"
 )
 
 func main() {
