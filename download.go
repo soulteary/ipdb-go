@@ -2,7 +2,6 @@ package ipdb
 
 import "net/url"
 
-//
 type Download struct {
 	URL *url.URL
 }
