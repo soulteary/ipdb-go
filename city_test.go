@@ -10,9 +10,13 @@ import (
 
 var db *ipdb.City
 
+const (
+	TEST_DB_PATH = "city.free.ipdb"
+)
+
 func init() {
 	var err error
-	db, err = ipdb.NewCity("city.free.ipdb")
+	db, err = ipdb.NewCity(TEST_DB_PATH)
 	if err != nil {
 		panic(err)
 	}
@@ -26,7 +30,7 @@ func TestNewCity(t *testing.T) {
 	}{
 		{
 			name:    "valid database",
-			dbPath:  "city.free.ipdb",
+			dbPath:  TEST_DB_PATH,
 			wantErr: false,
 		},
 		{
