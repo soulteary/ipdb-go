@@ -9,27 +9,25 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
-	"unsafe"
 )
 
-const IPv4 = 0x01
-const IPv6 = 0x02
+const (
+	IPv4 = 0x01
+	IPv6 = 0x02
+)
 
 var (
-	ErrFileSize = errors.New("IP Database file size error.")
-	ErrMetaData = errors.New("IP Database metadata error.")
-	ErrReadFull = errors.New("IP Database ReadFull error.")
-
-	ErrDatabaseError = errors.New("database error")
-
-	ErrIPFormat = errors.New("Query IP Format error.")
-
-	ErrNoSupportLanguage = errors.New("language not support")
-	ErrNoSupportIPv4     = errors.New("IPv4 not support")
-	ErrNoSupportIPv6     = errors.New("IPv6 not support")
-
-	ErrDataNotExists = errors.New("data is not exists")
+	ErrFileSize          = errors.New("IP数据库文件大小错误")
+	ErrMetaData          = errors.New("IP数据库元数据错误")
+	ErrReadFull          = errors.New("IP数据库读取错误")
+	ErrDatabase          = errors.New("数据库错误")
+	ErrIPFormat          = errors.New("IP地址格式错误")
+	ErrNoSupportLanguage = errors.New("不支持该语言")
+	ErrNoSupportIPv4     = errors.New("不支持IPv4")
+	ErrNoSupportIPv6     = errors.New("不支持IPv6")
+	ErrDataNotExists     = errors.New("数据不存在")
 )
 
 type MetaData struct {
@@ -42,6 +40,7 @@ type MetaData struct {
 }
 
 type reader struct {
+	sync.RWMutex
 	fileSize  int
 	nodeCount int
 	v4offset  int
@@ -50,6 +49,7 @@ type reader struct {
 	data []byte
 
 	refType map[string]string
+	cache   sync.Map
 }
 
 func newReader(name string, obj interface{}) (*reader, error) {
@@ -130,25 +130,35 @@ func initBytes(body []byte, fileSize int, obj interface{}) (*reader, error) {
 }
 
 func (db *reader) Find(addr, language string) ([]string, error) {
+	db.RLock()
+	defer db.RUnlock()
 	return db.find1(addr, language)
 }
 
 func (db *reader) FindMap(addr, language string) (map[string]string, error) {
+	db.RLock()
+	defer db.RUnlock()
+
+	if val, ok := db.cache.Load(addr + language); ok {
+		return val.(map[string]string), nil
+	}
 
 	data, err := db.find1(addr, language)
 	if err != nil {
 		return nil, err
 	}
+
 	info := make(map[string]string, len(db.meta.Fields))
 	for k, v := range data {
 		info[db.meta.Fields[k]] = v
 	}
 
+	db.cache.Store(addr+language, info)
+
 	return info, nil
 }
 
 func (db *reader) find0(addr string) ([]byte, error) {
-
 	var err error
 	var node int
 	ipv := net.ParseIP(addr)
@@ -172,16 +182,10 @@ func (db *reader) find0(addr string) ([]byte, error) {
 		return nil, err
 	}
 
-	body, err := db.resolve(node)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
+	return db.resolve(node)
 }
 
 func (db *reader) find1(addr, language string) ([]string, error) {
-
 	off, ok := db.meta.Languages[language]
 	if !ok {
 		return nil, ErrNoSupportLanguage
@@ -192,32 +196,24 @@ func (db *reader) find1(addr, language string) ([]string, error) {
 		return nil, err
 	}
 
-	str := (*string)(unsafe.Pointer(&body))
-	tmp := strings.Split(*str, "\t")
+	str := string(body)
+	tmp := strings.Split(str, "\t")
 
 	if (off + len(db.meta.Fields)) > len(tmp) {
-		return nil, ErrDatabaseError
+		return nil, ErrDatabase
 	}
 
 	return tmp[off : off+len(db.meta.Fields)], nil
 }
 
 func (db *reader) search(ip net.IP, bitCount int) (int, error) {
-
-	var node int
-
+	node := 0
 	if bitCount == 32 {
 		node = db.v4offset
-	} else {
-		node = 0
 	}
 
-	for i := 0; i < bitCount; i++ {
-		if node > db.nodeCount {
-			break
-		}
-
-		node = db.readNode(node, ((0xFF&int(ip[i>>3]))>>uint(7-(i%8)))&1)
+	for i := 0; i < bitCount && node < db.nodeCount; i++ {
+		node = db.readNode(node, int((ip[i>>3]>>(7-(i&7)))&1))
 	}
 
 	if node > db.nodeCount {
@@ -235,12 +231,12 @@ func (db *reader) readNode(node, index int) int {
 func (db *reader) resolve(node int) ([]byte, error) {
 	resolved := node - db.nodeCount + db.nodeCount*8
 	if resolved >= db.fileSize {
-		return nil, ErrDatabaseError
+		return nil, ErrDatabase
 	}
 
 	size := int(binary.BigEndian.Uint16(db.data[resolved : resolved+2]))
 	if (resolved + 2 + size) > len(db.data) {
-		return nil, ErrDatabaseError
+		return nil, ErrDatabase
 	}
 	bytes := db.data[resolved+2 : resolved+2+size]
 
@@ -265,4 +261,8 @@ func (db *reader) Languages() []string {
 		ls = append(ls, k)
 	}
 	return ls
+}
+
+func (db *reader) ClearCache() {
+	db.cache = sync.Map{}
 }
