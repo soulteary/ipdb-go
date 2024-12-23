@@ -2,8 +2,11 @@ package ipdb
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"reflect"
+	"sync"
 	"time"
 )
 
@@ -60,110 +63,151 @@ type ASNInfo struct {
 // City struct
 type City struct {
 	reader *reader
+	cache  *sync.Map    // 添加缓存
+	mu     sync.RWMutex // 用于保护并发访问
 }
 
 // NewCity initialize
 func NewCity(name string) (*City, error) {
-
 	r, e := newReader(name, &CityInfo{})
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("初始化City数据库失败: %v", e)
 	}
 
 	return &City{
 		reader: r,
+		cache:  &sync.Map{},
 	}, nil
 }
 
+// NewCityFromBytes initialize from bytes
 func NewCityFromBytes(bs []byte) (*City, error) {
 	r, e := newReaderFromBytes(bs, &CityInfo{})
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("从字节数据初始化City数据库失败: %v", e)
 	}
 
-	return &City{reader: r}, nil
+	return &City{
+		reader: r,
+		cache:  &sync.Map{},
+	}, nil
 }
 
 // Reload the database
 func (db *City) Reload(name string) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 
-	_, err := os.Stat(name)
-	if err != nil {
-		return err
+	if _, err := os.Stat(name); err != nil {
+		return fmt.Errorf("数据库文件不存在: %v", err)
 	}
 
 	reader, err := newReader(name, &CityInfo{})
 	if err != nil {
-		return err
+		return fmt.Errorf("加载数据库失败: %v", err)
 	}
 
 	db.reader = reader
+	db.ClearCache() // 清理缓存
 
 	return nil
 }
 
+// ClearCache clears the internal cache
+func (db *City) ClearCache() {
+	db.cache = &sync.Map{}
+}
+
+// validateIP validates IP address format
+func validateIP(addr string) error {
+	if net.ParseIP(addr) == nil {
+		return fmt.Errorf("无效的IP地址格式: %s", addr)
+	}
+	return nil
+}
+
+// FindInfo query with addr
+func (db *City) FindInfo(addr, language string) (*CityInfo, error) {
+	// 验证IP地址
+	if err := validateIP(addr); err != nil {
+		return nil, err
+	}
+
+	// 检查缓存
+	if val, ok := db.cache.Load(addr + language); ok {
+		if info, ok := val.(*CityInfo); ok {
+			return info, nil
+		}
+	}
+
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	data, err := db.reader.FindMap(addr, language)
+	if err != nil {
+		return nil, fmt.Errorf("查找IP信息失败: %v", err)
+	}
+
+	info := &CityInfo{}
+
+	// 使用反射优化
+	val := reflect.ValueOf(info).Elem()
+	for k, v := range data {
+		field := val.FieldByName(db.reader.refType[k])
+		if !field.IsValid() || !field.CanSet() {
+			continue
+		}
+
+		switch field.Type().String() {
+		case "[]ipdb.ASNInfo":
+			var asnList []ASNInfo
+			if err := json.Unmarshal([]byte(v), &asnList); err == nil {
+				field.Set(reflect.ValueOf(asnList))
+			}
+		case "ipdb.DistrictInfo":
+			var dist DistrictInfo
+			if err := json.Unmarshal([]byte(v), &dist); err == nil {
+				field.Set(reflect.ValueOf(dist))
+			}
+		default:
+			field.SetString(v)
+		}
+	}
+
+	// 存入缓存
+	db.cache.Store(addr+language, info)
+
+	return info, nil
+}
+
 // Find query with addr
 func (db *City) Find(addr, language string) ([]string, error) {
+	if err := validateIP(addr); err != nil {
+		return nil, err
+	}
+
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 	return db.reader.find1(addr, language)
 }
 
 // FindMap query with addr
 func (db *City) FindMap(addr, language string) (map[string]string, error) {
+	if err := validateIP(addr); err != nil {
+		return nil, err
+	}
+
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 
 	data, err := db.reader.find1(addr, language)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("查找IP信息失败: %v", err)
 	}
+
 	info := make(map[string]string, len(db.reader.meta.Fields))
 	for k, v := range data {
 		info[db.reader.meta.Fields[k]] = v
-	}
-
-	return info, nil
-}
-
-// FindInfo query with addr
-func (db *City) FindInfo(addr, language string) (*CityInfo, error) {
-
-	data, err := db.reader.FindMap(addr, language)
-	if err != nil {
-		return nil, err
-	}
-
-	var asnInfoList []ASNInfo
-	var asnInfoType = reflect.TypeOf(asnInfoList)
-
-	var districtInfo DistrictInfo
-	var districtInfoType = reflect.TypeOf(districtInfo)
-
-	info := &CityInfo{}
-
-	for k, v := range data {
-		sv := reflect.ValueOf(info).Elem()
-		sfv := sv.FieldByName(db.reader.refType[k])
-
-		if !sfv.IsValid() {
-			continue
-		}
-		if !sfv.CanSet() {
-			continue
-		}
-
-		sft := sfv.Type()
-		fv := reflect.ValueOf(v)
-		if sft == fv.Type() {
-			sfv.Set(fv)
-		} else if sft == asnInfoType {
-			err = json.Unmarshal([]byte(v), &asnInfoList)
-			if err == nil {
-				sfv.Set(reflect.ValueOf(asnInfoList))
-			}
-		} else if sft == districtInfoType {
-			err = json.Unmarshal([]byte(v), &districtInfo)
-			if err == nil {
-				sfv.Set(reflect.ValueOf(districtInfo))
-			}
-		}
 	}
 
 	return info, nil
